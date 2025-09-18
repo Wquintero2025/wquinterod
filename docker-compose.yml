@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_pwd
+      POSTGRES_DB: saas
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  web:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://app:app_pwd@db:5432/saas?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: development_secret_change_me
+      BASE_DOMAIN: localhost
+      NEXT_PUBLIC_BASE_DOMAIN: localhost
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  db_data:
