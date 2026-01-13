@@ -1,0 +1,860 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES - Multi-tenant Foundation
+// ============================================
+
+model Church {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  timezone    String   @default("America/Mexico_City")
+  logo        String?
+  website     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  campuses            Campus[]
+  persons             Person[]
+  users               User[]
+  roles               Role[]
+  ministries          Ministry[]
+  groups              Group[]
+  courses             Course[]
+  events              Event[]
+  careCases           CareCase[]
+  altarCallEvents     AltarCallEvent[]
+  leadershipPositions LeadershipPosition[]
+
+  @@index([slug])
+  @@map("churches")
+}
+
+model Campus {
+  id        String   @id @default(cuid())
+  churchId  String
+  name      String
+  address   String?
+  city      String?
+  phone     String?
+  isMain    Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  church              Church               @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  persons             Person[]
+  ministries          Ministry[]
+  groups              Group[]
+  courseClasses       CourseClass[]
+  events              Event[]
+  altarCallEvents     AltarCallEvent[]
+  leadershipPositions LeadershipPosition[]
+
+  @@index([churchId])
+  @@map("campuses")
+}
+
+model Person {
+  id                String    @id @default(cuid())
+  churchId          String
+  campusId          String?
+  firstName         String
+  lastName          String
+  middleName        String?
+  email             String?
+  phone             String?
+  alternatePhone    String?
+  dateOfBirth       DateTime?
+  gender            Gender?
+  maritalStatus     MaritalStatus?
+  numberOfChildren  Int?
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  country           String?
+  photoUrl          String?
+  
+  // Spiritual Status
+  spiritualStatus   SpiritualStatus @default(VISITOR)
+  firstVisitDate    DateTime?
+  salvationDate     DateTime?
+  baptismDate       DateTime?
+  membershipDate    DateTime?
+  
+  // Metadata
+  notes             String?
+  invitedBy         String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  church                Church               @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus                Campus?              @relation(fields: [campusId], references: [id])
+  user                  User?
+  roles                 PersonRole[]
+  relationships         PersonRelationship[] @relation("PersonRelationships")
+  relatedTo             PersonRelationship[] @relation("RelatedPersons")
+  timeline              PersonTimeline[]
+  altarCallEvents       AltarCallEvent[]
+  enrollments           Enrollment[]
+  groupMemberships      GroupMembership[]
+  eventRegistrations    EventRegistration[]
+  eventAttendances      EventAttendance[]
+  groupAttendances      GroupAttendance[]
+  sessionAttendances    SessionAttendance[]
+  careCases             CareCase[]
+  careAssignments       CareAssignment[]
+  followUpTasksCreated  FollowUpTask[]       @relation("TaskCreator")
+  followUpTasksAssigned FollowUpTask[]       @relation("TaskAssignee")
+  leadershipPositions   LeadershipPosition[]
+
+  @@index([churchId])
+  @@index([campusId])
+  @@index([email])
+  @@index([phone])
+  @@index([spiritualStatus])
+  @@map("persons")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  churchId      String
+  personId      String    @unique
+  email         String    @unique
+  passwordHash  String
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([churchId])
+  @@index([email])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  churchId    String
+  name        String
+  description String?
+  permissions String[] // JSON array of permission strings
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  church      Church       @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  personRoles PersonRole[]
+
+  @@unique([churchId, name])
+  @@index([churchId])
+  @@map("roles")
+}
+
+model PersonRole {
+  id        String    @id @default(cuid())
+  personId  String
+  roleId    String
+  scope     String? // e.g., "campus:123", "group:456", "ministry:789"
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([personId])
+  @@index([roleId])
+  @@map("person_roles")
+}
+
+// ============================================
+// MODULE 1: Church Structure & Leadership
+// ============================================
+
+model LeadershipPosition {
+  id          String    @id @default(cuid())
+  churchId    String
+  campusId    String?
+  personId    String
+  title       String
+  department  String?
+  level       Int       @default(0) // For hierarchy: 0=senior pastor, 1=campus pastor, etc.
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  church Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus Campus? @relation(fields: [campusId], references: [id])
+  person Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([churchId])
+  @@index([campusId])
+  @@index([personId])
+  @@map("leadership_positions")
+}
+
+model Ministry {
+  id          String   @id @default(cuid())
+  churchId    String
+  campusId    String?
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  church Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus Campus? @relation(fields: [campusId], references: [id])
+  groups Group[]
+
+  @@index([churchId])
+  @@index([campusId])
+  @@map("ministries")
+}
+
+// ============================================
+// MODULE 2: Person Timeline (CRM)
+// ============================================
+
+model PersonTimeline {
+  id          String         @id @default(cuid())
+  personId    String
+  eventType   TimelineEvent
+  title       String
+  description String?
+  metadata    String? // JSON for additional data
+  occurredAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+
+  // Relations
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId])
+  @@index([occurredAt])
+  @@map("person_timeline")
+}
+
+model PersonRelationship {
+  id             String           @id @default(cuid())
+  personId       String
+  relatedPersonId String
+  relationshipType RelationType
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relations
+  person        Person @relation("PersonRelationships", fields: [personId], references: [id], onDelete: Cascade)
+  relatedPerson Person @relation("RelatedPersons", fields: [relatedPersonId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, relatedPersonId, relationshipType])
+  @@index([personId])
+  @@index([relatedPersonId])
+  @@map("person_relationships")
+}
+
+// ============================================
+// MODULE 3: Altar Call & Duplicate Detection
+// ============================================
+
+model AltarCallEvent {
+  id            String         @id @default(cuid())
+  churchId      String
+  campusId      String?
+  personId      String
+  eventId       String?
+  decisionType  DecisionType
+  invitedBy     String?
+  counselor     String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  church Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus Campus? @relation(fields: [campusId], references: [id])
+  person Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  event  Event?  @relation(fields: [eventId], references: [id])
+  followUpTasks FollowUpTask[]
+
+  @@index([churchId])
+  @@index([campusId])
+  @@index([personId])
+  @@index([eventId])
+  @@map("altar_call_events")
+}
+
+model FollowUpTask {
+  id               String          @id @default(cuid())
+  altarCallEventId String
+  title            String
+  description      String?
+  assignedToId     String?
+  createdById      String
+  dueDate          DateTime?
+  status           TaskStatus      @default(PENDING)
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relations
+  altarCallEvent AltarCallEvent @relation(fields: [altarCallEventId], references: [id], onDelete: Cascade)
+  assignedTo     Person?        @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdBy      Person         @relation("TaskCreator", fields: [createdById], references: [id])
+
+  @@index([altarCallEventId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("follow_up_tasks")
+}
+
+model DuplicateMatch {
+  id                String   @id @default(cuid())
+  personId1         String
+  personId2         String
+  confidenceScore   Float // 0-100
+  matchReasons      String[] // ["phone", "email", "name"]
+  status            DuplicateStatus @default(PENDING)
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  @@unique([personId1, personId2])
+  @@index([status])
+  @@map("duplicate_matches")
+}
+
+// ============================================
+// MODULE 4: Academy / Training
+// ============================================
+
+model Course {
+  id             String   @id @default(cuid())
+  churchId       String
+  name           String
+  description    String?
+  level          Int      @default(1)
+  prerequisites  String[] // Array of course IDs
+  durationWeeks  Int?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  church  Church        @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  classes CourseClass[]
+
+  @@index([churchId])
+  @@map("courses")
+}
+
+model CourseClass {
+  id          String    @id @default(cuid())
+  courseId    String
+  campusId    String?
+  name        String
+  teacherId   String?
+  startDate   DateTime
+  endDate     DateTime
+  maxStudents Int?
+  schedule    String? // e.g., "Mondays 7pm"
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  course      Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  campus      Campus?             @relation(fields: [campusId], references: [id])
+  enrollments Enrollment[]
+  sessions    ClassSession[]
+
+  @@index([courseId])
+  @@index([campusId])
+  @@map("course_classes")
+}
+
+model Enrollment {
+  id              String           @id @default(cuid())
+  classId         String
+  personId        String
+  status          EnrollmentStatus @default(ENROLLED)
+  enrolledAt      DateTime         @default(now())
+  completedAt     DateTime?
+  grade           String?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  class  CourseClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  person Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, personId])
+  @@index([classId])
+  @@index([personId])
+  @@map("enrollments")
+}
+
+model ClassSession {
+  id          String   @id @default(cuid())
+  classId     String
+  sessionNumber Int
+  title       String?
+  scheduledAt DateTime
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  class      CourseClass         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  attendances SessionAttendance[]
+
+  @@unique([classId, sessionNumber])
+  @@index([classId])
+  @@map("class_sessions")
+}
+
+model SessionAttendance {
+  id        String   @id @default(cuid())
+  sessionId String
+  personId  String
+  status    AttendanceStatus @default(PRESENT)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  person  Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, personId])
+  @@index([sessionId])
+  @@index([personId])
+  @@map("session_attendances")
+}
+
+// ============================================
+// MODULE 5: Pastoral Care Clinic
+// ============================================
+
+model CareCase {
+  id          String       @id @default(cuid())
+  churchId    String
+  personId    String
+  caseNumber  String       @unique
+  needType    CareNeedType
+  urgency     UrgencyLevel @default(MEDIUM)
+  status      CaseStatus   @default(NEW)
+  description String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  closedAt    DateTime?
+
+  // Relations
+  church      Church           @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person      Person           @relation(fields: [personId], references: [id], onDelete: Cascade)
+  assignments CareAssignment[]
+  notes       CareNote[]
+
+  @@index([churchId])
+  @@index([personId])
+  @@index([status])
+  @@map("care_cases")
+}
+
+model CareAssignment {
+  id          String    @id @default(cuid())
+  caseId      String
+  counselorId String
+  assignedAt  DateTime  @default(now())
+  unassignedAt DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  case      CareCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  counselor Person   @relation(fields: [counselorId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([counselorId])
+  @@map("care_assignments")
+}
+
+model CareNote {
+  id          String   @id @default(cuid())
+  caseId      String
+  content     String
+  nextSteps   String?
+  nextMeeting DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  case CareCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("care_notes")
+}
+
+// ============================================
+// MODULE 6: Groups & Small Groups
+// ============================================
+
+model Group {
+  id          String    @id @default(cuid())
+  churchId    String
+  campusId    String?
+  ministryId  String?
+  name        String
+  description String?
+  groupType   GroupType
+  meetingDay  String?
+  meetingTime String?
+  location    String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  church       Church            @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus       Campus?           @relation(fields: [campusId], references: [id])
+  ministry     Ministry?         @relation(fields: [ministryId], references: [id])
+  memberships  GroupMembership[]
+  meetings     GroupMeeting[]
+
+  @@index([churchId])
+  @@index([campusId])
+  @@index([ministryId])
+  @@map("groups")
+}
+
+model GroupMembership {
+  id        String         @id @default(cuid())
+  groupId   String
+  personId  String
+  role      GroupRole      @default(MEMBER)
+  joinedAt  DateTime       @default(now())
+  leftAt    DateTime?
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  // Relations
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, personId])
+  @@index([groupId])
+  @@index([personId])
+  @@map("group_memberships")
+}
+
+model GroupMeeting {
+  id          String   @id @default(cuid())
+  groupId     String
+  meetingDate DateTime
+  topic       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  group       Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  attendances GroupAttendance[]
+
+  @@index([groupId])
+  @@index([meetingDate])
+  @@map("group_meetings")
+}
+
+model GroupAttendance {
+  id        String           @id @default(cuid())
+  meetingId String
+  personId  String
+  status    AttendanceStatus @default(PRESENT)
+  isGuest   Boolean          @default(false)
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  // Relations
+  meeting GroupMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  person  Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, personId])
+  @@index([meetingId])
+  @@index([personId])
+  @@map("group_attendances")
+}
+
+// ============================================
+// MODULE 7: Events & Services
+// ============================================
+
+model Event {
+  id            String    @id @default(cuid())
+  churchId      String
+  campusId      String?
+  name          String
+  description   String?
+  eventType     EventType
+  startDateTime DateTime
+  endDateTime   DateTime
+  location      String?
+  maxAttendees  Int?
+  requiresReg   Boolean   @default(false)
+  isPublic      Boolean   @default(true)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  church          Church              @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  campus          Campus?             @relation(fields: [campusId], references: [id])
+  registrations   EventRegistration[]
+  attendances     EventAttendance[]
+  altarCallEvents AltarCallEvent[]
+
+  @@index([churchId])
+  @@index([campusId])
+  @@index([startDateTime])
+  @@map("events")
+}
+
+model EventRegistration {
+  id           String   @id @default(cuid())
+  eventId      String
+  personId     String
+  registeredAt DateTime @default(now())
+  status       RegistrationStatus @default(CONFIRMED)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, personId])
+  @@index([eventId])
+  @@index([personId])
+  @@map("event_registrations")
+}
+
+model EventAttendance {
+  id        String           @id @default(cuid())
+  eventId   String
+  personId  String
+  status    AttendanceStatus @default(PRESENT)
+  checkInAt DateTime?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  // Relations
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, personId])
+  @@index([eventId])
+  @@index([personId])
+  @@map("event_attendances")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  SEPARATED
+}
+
+enum SpiritualStatus {
+  VISITOR
+  NEW_BELIEVER
+  IN_PROCESS
+  MEMBER
+  SERVANT
+  LEADER
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  PASTOR
+  GROUP_LEADER
+  COUNSELOR
+  USER
+}
+
+enum TimelineEvent {
+  FIRST_VISIT
+  SALVATION
+  BAPTISM
+  MEMBERSHIP
+  ALTAR_CALL
+  GROUP_JOINED
+  GROUP_LEFT
+  COURSE_ENROLLED
+  COURSE_COMPLETED
+  ROLE_ASSIGNED
+  ROLE_REMOVED
+  CARE_CASE_OPENED
+  CARE_CASE_CLOSED
+  EVENT_ATTENDED
+  NOTE_ADDED
+}
+
+enum RelationType {
+  SPOUSE
+  CHILD
+  PARENT
+  SIBLING
+  FRIEND
+  DISCIPLER
+  DISCIPLE
+  OTHER
+}
+
+enum DecisionType {
+  SALVATION
+  REDEDICATION
+  BAPTISM
+  MEMBERSHIP
+  PRAYER_REQUEST
+  COUNSELING
+  OTHER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DuplicateStatus {
+  PENDING
+  CONFIRMED_DUPLICATE
+  NOT_DUPLICATE
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  COMPLETED
+  DROPPED
+  WITHDRAWN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+  LATE
+}
+
+enum CareNeedType {
+  MARRIAGE
+  ADDICTION
+  DEPRESSION
+  ANXIETY
+  FINANCES
+  FAMILY
+  GRIEF
+  SPIRITUAL
+  OTHER
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CaseStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  ON_HOLD
+  CLOSED
+}
+
+enum GroupType {
+  CELL
+  DISCIPLESHIP
+  SERVICE
+  MINISTRY
+  PRAYER
+  STUDY
+  OTHER
+}
+
+enum GroupRole {
+  LEADER
+  CO_LEADER
+  HOST
+  MEMBER
+}
+
+enum EventType {
+  WORSHIP_SERVICE
+  CONFERENCE
+  RETREAT
+  TRAINING
+  OUTREACH
+  SOCIAL
+  OTHER
+}
+
+enum RegistrationStatus {
+  CONFIRMED
+  WAITLIST
+  CANCELLED
+}
